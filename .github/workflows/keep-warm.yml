@@ -12,8 +12,10 @@ on:
 
 # One live chain at any time: a new trigger cancels the sleeping predecessor
 # and starts a fresh chain, so duplicates collapse instead of multiplying.
+# Each run gets its own group (runs exit after dispatching their successor,
+# so chains stay linear); only the scheduler backstop shares one slot.
 concurrency:
-  group: keep-warm-chain
+  group: ${{ github.event_name == 'schedule' && 'keep-warm-schedule' || format('keep-warm-{0}', github.run_id) }}
   cancel-in-progress: true
 
 jobs:
