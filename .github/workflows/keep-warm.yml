@@ -53,9 +53,11 @@ jobs:
           if [ -f alert-state.txt ] && grep -q failing alert-state.txt; then
             echo "still down — no repeat alert"
           else
-            curl -s "https://api.telegram.org/bot$TOKEN/sendMessage" \
+            RESP=$(curl -sS "https://api.telegram.org/bot$TOKEN/sendMessage" \
               -d chat_id="$CHAT" \
-              --data-urlencode text="🔴 VIREL DOWN — health check failed at $(date -u '+%H:%M UTC'). Investigate: https://virel.com.ng/status" | grep -q '"ok":true'
+              --data-urlencode text="🔴 VIREL DOWN — health check failed at $(date -u '+%H:%M UTC'). Investigate: https://virel.com.ng/status") || true
+            echo "telegram response: $RESP"
+            echo "$RESP" | grep -q '"ok":true' || { echo "::error::Telegram send failed"; exit 1; }
             echo "alert sent"
           fi
           echo failing > alert-state.txt
