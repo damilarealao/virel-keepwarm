@@ -60,11 +60,16 @@ jobs:
           echo failing > alert-state.txt
 
       - name: Alert on recovery
-        if: success() && steps.state.outputs.cache-hit == 'true' && [ -f alert-state.txt ] && grep -q failing alert-state.txt
+        if: success()
         env:
           TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
         run: |
+          if [ ! -f alert-state.txt ] || ! grep -q failing alert-state.txt; then
+            echo "was healthy — no recovery notice needed"
+            echo ok > alert-state.txt
+            exit 0
+          fi
           curl -s "https://api.telegram.org/bot$TOKEN/sendMessage" \
             -d chat_id="$CHAT" \
             --data-urlencode text="🟢 VIREL RECOVERED — health check passing again ($(date -u '+%H:%M UTC'))" | grep -q '"ok":true'
