@@ -28,7 +28,7 @@ jobs:
       - name: Ping health endpoint
         id: ping
         run: |
-          if [ "${{ inputs.test_failure }}" = "true" ] || [ "${{ inputs.test_failure }}" = true ]; then
+          if [ "${{ vars.TEST_FORCE_FAILURE }}" = "1" ] || [ "${{ inputs.test_failure }}" = "true" ]; then
             echo "TEST FAILURE MODE"
             exit 1
           fi
