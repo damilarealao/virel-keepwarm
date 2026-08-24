@@ -2,21 +2,41 @@ name: Keep API warm
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "*/5 * * * *"   # backstop; the real cadence is the self-chain below
   workflow_dispatch:
+
+# One live chain at any time: a new trigger cancels the sleeping predecessor
+# and starts a fresh chain, so duplicates collapse instead of multiplying.
+concurrency:
+  group: keep-warm-chain
+  cancel-in-progress: true
 
 jobs:
   ping:
     runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      actions: write
     steps:
       - name: Ping health endpoint
         run: |
           code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 https://virel.com.ng/api/health)
           echo "health: $code"
-          test "$code" = "200"
+          test "$code" = "200" || exit 1
 
-  # GitHub disables schedules after 60 days of repo inactivity; this monthly
-  # no-op commit keeps the repo alive so the ping never stops.
+      # Chain continuation runs even if the ping failed, so a single bad
+      # request never kills the loop. Public repo => runner minutes are free.
+      - name: Schedule the next ping (~5 min cadence)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          sleep 270
+          gh api -X POST "repos/$REPO/actions/workflows/keep-warm.yml/dispatches" -f ref=main
+
+  # GitHub disables scheduled workflows after 60 days without repo activity;
+  # this monthly no-op commit keeps the repo alive.
   activity-keeper:
     runs-on: ubuntu-latest
     if: github.event.schedule == '0 3 1 * *'
