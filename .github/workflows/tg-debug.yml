@@ -1,0 +1,16 @@
+name: TG debug
+on: workflow_dispatch
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+        run: |
+          echo "token length: ${#TOKEN}"
+          echo "chat: [$CHAT]"
+          echo "first4: ${TOKEN:0:4}"
+          RESP=$(curl -sS "https://api.telegram.org/bot$TOKEN/getMe")
+          echo "getMe: $RESP"
