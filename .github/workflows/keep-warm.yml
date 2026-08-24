@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "*/5 * * * *"   # backstop; the real cadence is the self-chain below
   workflow_dispatch:
+    inputs:
+      test_failure:
+        description: "Simulate a failed health check (tests alerting)"
+        type: boolean
+        default: false
 
 # One live chain at any time: a new trigger cancels the sleeping predecessor
 # and starts a fresh chain, so duplicates collapse instead of multiplying.
@@ -19,10 +24,51 @@ jobs:
       actions: write
     steps:
       - name: Ping health endpoint
+        id: ping
         run: |
+          if [ "${{ inputs.test_failure }}" = "true" ]; then
+            echo "TEST FAILURE MODE"
+            exit 1
+          fi
           code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 https://virel.com.ng/api/health)
           echo "health: $code"
           test "$code" = "200" || exit 1
+
+      - name: Read alert state
+        if: always()
+        id: state
+        uses: actions/cache@v4
+        with:
+          path: alert-state.txt
+          key: alert-state-${{ github.run_id }}
+          restore-keys: alert-state-
+
+      - name: Alert on failure (once per outage)
+        if: failure() && steps.ping.outcome == 'failure'
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+        run: |
+          if [ -f alert-state.txt ] && grep -q failing alert-state.txt; then
+            echo "still down — no repeat alert"
+          else
+            curl -s "https://api.telegram.org/bot$TOKEN/sendMessage" \
+              -d chat_id="$CHAT" \
+              --data-urlencode text="🔴 VIREL DOWN — health check failed at $(date -u '+%H:%M UTC'). Investigate: https://virel.com.ng/status" | grep -q '"ok":true'
+            echo "alert sent"
+          fi
+          echo failing > alert-state.txt
+
+      - name: Alert on recovery
+        if: success() && steps.state.outputs.cache-hit == 'true' && [ -f alert-state.txt ] && grep -q failing alert-state.txt
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+        run: |
+          curl -s "https://api.telegram.org/bot$TOKEN/sendMessage" \
+            -d chat_id="$CHAT" \
+            --data-urlencode text="🟢 VIREL RECOVERED — health check passing again ($(date -u '+%H:%M UTC'))" | grep -q '"ok":true'
+          echo ok > alert-state.txt
 
       # Chain continuation runs even if the ping failed, so a single bad
       # request never kills the loop. Public repo => runner minutes are free.
