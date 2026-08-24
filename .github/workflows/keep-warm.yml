@@ -36,10 +36,9 @@ jobs:
           echo "health: $code"
           test "$code" = "200" || exit 1
 
-      - name: Read alert state
+      - name: Restore alert state
         if: always()
-        id: state
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: alert-state.txt
           key: alert-state-${{ github.run_id }}
@@ -61,8 +60,15 @@ jobs:
           fi
           echo failing > alert-state.txt
 
+      - name: Save failing state immediately
+        if: failure()
+        uses: actions/cache/save@v4
+        with:
+          path: alert-state.txt
+          key: alert-state-${{ github.run_id }}
+
       - name: Alert on recovery
-        if: success()
+        if: success() && steps.ping.outcome == 'success'
         env:
           TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
@@ -76,6 +82,13 @@ jobs:
             -d chat_id="$CHAT" \
             --data-urlencode text="🟢 VIREL RECOVERED — health check passing again ($(date -u '+%H:%M UTC'))" | grep -q '"ok":true'
           echo ok > alert-state.txt
+
+      - name: Save recovered state immediately
+        if: success() && steps.ping.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: alert-state.txt
+          key: alert-state-${{ github.run_id }}
 
       # Chain continuation runs even if the ping failed, so a single bad
       # request never kills the loop. Public repo => runner minutes are free.
